@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
 import 'dart:math';
+import 'dart:async';
 
 void main() {
   runApp(const MyApp());
@@ -59,15 +60,64 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   final double _diceSize = 50;
+  double velocity = 400;
+  int _xDirection = 1;
+  int _yDirection = 1;
+  bool rolling = false;
   Offset? _dicePosition;
-  int slope = Random().nextInt(20 + 1) + 1;
+  double? friction;
+  bool conflicted = false;
+  
+  
   @override
+  
   Widget build(BuildContext context) {
     _dicePosition ??= Offset(
         (MediaQuery.of(context).size.width - _diceSize) / 2,
         (MediaQuery.of(context).size.height - _diceSize) / 2);
-    print(_dicePosition!.dx.toString() + ', ' + _dicePosition!.dy.toString());
-    print(slope);
+    void throwDice(){
+      friction = 1;
+      int slope = (Random().nextInt(5 + 1) + 2);
+    Timer.periodic(const Duration(milliseconds: 33), (timer) { 
+      double _xDistance = ((sqrt(velocity / ((slope ^ 2) + 1)))*_xDirection)*(friction!.toDouble());
+      double _yDistance = ((sqrt(velocity - (velocity / ((slope ^ 2) + 1))))*_yDirection)*(friction!.toDouble());
+      setState(() {
+        _dicePosition = Offset(_dicePosition!.dx + _xDistance,
+            _dicePosition!.dy - _yDistance);
+            print(conflicted);
+            if((_dicePosition!.dx >=(MediaQuery.of(context).size.width - _diceSize)||_dicePosition!.dx <=0)&&!conflicted){
+              _xDirection = -1*_xDirection;
+              friction = 1;
+              conflicted = true;
+            } 
+            if((_dicePosition!.dx <(MediaQuery.of(context).size.width - _diceSize)&&(_dicePosition!.dx >0))&&conflicted){
+              
+              friction = 5/timer.tick.toInt();
+              conflicted = false;
+            }
+            if((_dicePosition!.dy >=(MediaQuery.of(context).size.height - _diceSize*2) ||_dicePosition!.dy <=0)&&!conflicted){
+              _yDirection = -1*_yDirection;
+              friction = 1;
+              conflicted = true;
+            }
+            if((_dicePosition!.dy <(MediaQuery.of(context).size.height - _diceSize)&&(_dicePosition!.dy >0))&&conflicted){
+              friction = 5/timer.tick.toInt();
+              conflicted = false;
+            }
+            if(_xDistance.abs() <0.1&&_yDistance.abs() <0.1 &&rolling){
+              timer.cancel();
+              print('stoping ...');
+              Timer(Duration(seconds: 5), () {
+                
+                stopRolling(timer, context); });
+              
+            }
+      });
+      if(!rolling){
+        stopRolling(timer, context);
+      }
+    });
+  }
     return Scaffold(
       appBar: AppBar(
         // TRY THIS: Try changing the color here to a specific color (to
@@ -87,14 +137,15 @@ class _MyHomePageState extends State<MyHomePage> {
                       padding: MaterialStatePropertyAll(
                           EdgeInsets.only(bottom: 20))),
                   onPressed: () {
-                    double _xDistance = sqrt(1 / ((slope ^ 2) + 1));
-                    double _yDistance = sqrt(1 - (1 / ((slope ^ 2) + 1)));
                     setState(() {
-                      _dicePosition = Offset(_dicePosition!.dx + _xDistance,
-                          _dicePosition!.dy + _yDistance);
+                      rolling = !rolling;
+                      throwDice();
                     });
+                    
+                    
+                    
                   },
-                  child: Text('Throw Dice!'))),
+                  child: Text(!rolling?'Throw Dice!':'Stop'))),
           Positioned(
             left: _dicePosition!.dx,
             top: _dicePosition!.dy,
@@ -107,5 +158,22 @@ class _MyHomePageState extends State<MyHomePage> {
         ],
       ), // This trailing comma makes auto-formatting nicer for build methods.
     );
+  }
+
+  void stopRolling(Timer timer, BuildContext context) {
+    setState(() {
+      conflicted = false;
+      velocity = 400;
+    rolling = false;
+    _dicePosition = Offset(
+    (MediaQuery.of(context).size.width - _diceSize) / 2,
+    (MediaQuery.of(context).size.height - _diceSize) / 2);
+    _xDirection =1;
+    _yDirection =1;
+    friction = 1;
+    });
+    print("STOPPP!");
+    timer.cancel();
+    timer.cancel;
   }
 }
