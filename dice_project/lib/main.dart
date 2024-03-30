@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
@@ -15,7 +17,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'RollingDice',
+      title: 'rollDice',
       theme: ThemeData(
         // This is the theme of your application.
         //
@@ -35,7 +37,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'RollingDice'),
+      home: const MyHomePage(title: 'rollDice'),
     );
   }
 }
@@ -59,65 +61,98 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  final double _diceSize = 50;
-  double velocity = 400;
+  final double _diceSize = 100;
+  double velocity = 10000;
   int _xDirection = 1;
   int _yDirection = 1;
-  bool rolling = false;
+  double _diceOrientation = 0;
+  // Untouchable in the beginning so that it can go
+  //through the bottom of the screen at the start
+  bool? untouchable;
+  bool addFriction = false;
+  bool roll = false;
   Offset? _dicePosition;
-  double? friction;
-  bool conflicted = false;
-  
-  
+  bool _xImpact = false;
+  bool _yImpact = false;
+  double friction = 1;
+  int? slope;
+  Timer? _diceAnimation;
+  Timer? _stopingDice;
+
+  get timer => null;
+
   @override
-  
   Widget build(BuildContext context) {
     _dicePosition ??= Offset(
         (MediaQuery.of(context).size.width - _diceSize) / 2,
-        (MediaQuery.of(context).size.height - _diceSize) / 2);
-    void throwDice(){
-      friction = 1;
-      int slope = (Random().nextInt(5 + 1) + 2);
-    Timer.periodic(const Duration(milliseconds: 33), (timer) { 
-      double _xDistance = ((sqrt(velocity / ((slope ^ 2) + 1)))*_xDirection)*(friction!.toDouble());
-      double _yDistance = ((sqrt(velocity - (velocity / ((slope ^ 2) + 1))))*_yDirection)*(friction!.toDouble());
-      setState(() {
-        _dicePosition = Offset(_dicePosition!.dx + _xDistance,
-            _dicePosition!.dy - _yDistance);
-            print(conflicted);
-            if((_dicePosition!.dx >=(MediaQuery.of(context).size.width - _diceSize)||_dicePosition!.dx <=0)&&!conflicted){
-              _xDirection = -1*_xDirection;
-              friction = 1;
-              conflicted = true;
-            } 
-            if((_dicePosition!.dx <(MediaQuery.of(context).size.width - _diceSize)&&(_dicePosition!.dx >0))&&conflicted){
-              
-              friction = 5/timer.tick.toInt();
-              conflicted = false;
+        (MediaQuery.of(context).size.height));
+
+    void throwDice(roll) {
+      if (roll) {
+        setDiceInitialParams(context);
+        _diceAnimation =
+            Timer.periodic(const Duration(milliseconds: 33), (timer) {
+          if (_dicePosition!.dy < MediaQuery.of(context).size.height * 0.5) {
+            untouchable = false;
+          }
+
+          //Calculate Dice offset per tick
+          double _xDistance =
+              ((sqrt(velocity / ((slope! ^ 2) + 1))) * _xDirection) *
+                  (friction);
+          double _yDistance =
+              ((sqrt(velocity - (velocity / ((slope! ^ 2) + 1)))) *
+                      _yDirection) *
+                  (friction);
+          setState(() {
+            if ((slope! % 2 != 0) && _yDistance > 0) {
+              _diceOrientation = -(pi / 2 - atan(_yDistance / _xDistance));
+            } else {
+              if ((slope! % 2 != 0) && _yDistance < 0) {
+                _diceOrientation = -(atan(_yDistance / _xDistance) + pi / 2);
+              } else {
+                if ((slope! % 2 == 0) && _yDistance < 0) {
+                  _diceOrientation = pi - (atan(_xDistance / _yDistance));
+                } else {
+                  if ((slope! % 2 == 0) && _yDistance > 0) {
+                    _diceOrientation = pi / 2 + (atan(_xDistance / _yDistance));
+                  }
+                }
+              }
             }
-            if((_dicePosition!.dy >=(MediaQuery.of(context).size.height - _diceSize*2) ||_dicePosition!.dy <=0)&&!conflicted){
-              _yDirection = -1*_yDirection;
-              friction = 1;
-              conflicted = true;
-            }
-            if((_dicePosition!.dy <(MediaQuery.of(context).size.height - _diceSize)&&(_dicePosition!.dy >0))&&conflicted){
-              friction = 5/timer.tick.toInt();
-              conflicted = false;
-            }
-            if(_xDistance.abs() <0.1&&_yDistance.abs() <0.1 &&rolling){
-              timer.cancel();
-              print('stoping ...');
-              Timer(Duration(seconds: 5), () {
-                
-                stopRolling(timer, context); });
-              
-            }
-      });
-      if(!rolling){
-        stopRolling(timer, context);
+          });
+
+          setState(
+            () {
+              //Apply Dice offset
+              _dicePosition = Offset(
+                  _dicePosition!.dx + _xDistance * (slope! % 2 == 0 ? -1 : 1),
+                  _dicePosition!.dy - _yDistance);
+
+              ImpactHandler(context, timer);
+              if (sqrt(_xDistance.abs() + _yDistance.abs()) < 0.5) {
+                roll = false;
+                print('THE DICE IS STOPING ...');
+                _diceAnimation!.cancel();
+
+                _stopingDice = Timer(Duration(seconds: 5), () {
+                  setState(() {
+                    setDiceInitialParams(context);
+                  });
+                  print('THE DICE IS OFFICIALLY STOPED!');
+                });
+              }
+            },
+          );
+        });
+      } else {
+        _diceAnimation!.cancel();
+        _stopingDice?.cancel();
+        print('THE DICE IS OFFICIALLY STOPED');
+        setDiceInitialParams(context);
       }
-    });
-  }
+    }
+
     return Scaffold(
       appBar: AppBar(
         // TRY THIS: Try changing the color here to a specific color (to
@@ -130,50 +165,116 @@ class _MyHomePageState extends State<MyHomePage> {
       ),
       body: Stack(
         children: [
-          Align(
-              alignment: Alignment.bottomCenter,
-              child: ElevatedButton(
-                  style: ButtonStyle(
-                      padding: MaterialStatePropertyAll(
-                          EdgeInsets.only(bottom: 20))),
-                  onPressed: () {
-                    setState(() {
-                      rolling = !rolling;
-                      throwDice();
-                    });
-                    
-                    
-                    
-                  },
-                  child: Text(!rolling?'Throw Dice!':'Stop'))),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 20),
+            child: Align(
+                alignment: Alignment.bottomCenter,
+                child: ElevatedButton(
+                    style: ButtonStyle(
+                        backgroundColor: MaterialStatePropertyAll(
+                            roll ? Colors.red : Colors.blue)),
+                    onPressed: () {
+                      setState(() {
+                        roll = !roll;
+                      });
+                      throwDice(roll);
+                    },
+                    child: Text(
+                      !roll ? 'Throw Dice!' : 'Stop',
+                      style: TextStyle(color: Colors.white),
+                    ))),
+          ),
           Positioned(
             left: _dicePosition!.dx,
             top: _dicePosition!.dy,
             child: Container(
-              width: _diceSize,
-              height: _diceSize,
-              decoration: BoxDecoration(color: Colors.blue),
-            ),
+                width: _diceSize,
+                height: _diceSize,
+                child: RotationTransition(
+                  turns: AlwaysStoppedAnimation(
+                      (_diceOrientation * 180 / pi) / 360),
+                  child: Image.asset(
+                    "assets/gifs/d6.gif",
+                    scale: 0.1,
+                  ),
+                )),
           )
         ],
       ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
 
-  void stopRolling(Timer timer, BuildContext context) {
-    setState(() {
-      conflicted = false;
-      velocity = 400;
-    rolling = false;
-    _dicePosition = Offset(
-    (MediaQuery.of(context).size.width - _diceSize) / 2,
-    (MediaQuery.of(context).size.height - _diceSize) / 2);
-    _xDirection =1;
-    _yDirection =1;
+  void setDiceInitialParams(BuildContext context) {
+    _dicePosition = Offset((MediaQuery.of(context).size.width - _diceSize) / 2,
+        (MediaQuery.of(context).size.height));
     friction = 1;
-    });
-    print("STOPPP!");
-    timer.cancel();
-    timer.cancel;
+    _xImpact = false;
+    _yImpact = false;
+    _xDirection = 1;
+    _yDirection = 1;
+    untouchable = true;
+    addFriction = false;
+    slope = (Random().nextInt(20));
+  }
+
+  void ImpactHandler(BuildContext context, timer) {
+    if (detectHorizontalImpact(context)) {
+      _xDirection = -1 * _xDirection;
+      _xImpact = true;
+      print('Outch! (x)');
+      print(_dicePosition!.dx);
+      friction = 1;
+    }
+
+    if (detectVerticalImpact(context)) {
+      _yDirection = -1 * _yDirection;
+      print('Outch! (y)');
+      _yImpact = true;
+      print(_dicePosition!.dy);
+      friction = 1;
+    }
+    if (detectOutOfImpact(context)) {
+      print('Out of Impact');
+      addFriction = true;
+      _xImpact = false;
+      _yImpact = false;
+    }
+    if (addFriction) {
+      friction = 1000 / pow(timer.tick, 3);
+    }
+  }
+
+  bool detectOutOfImpact(BuildContext context) {
+    if ((_dicePosition!.dx < (MediaQuery.of(context).size.width - _diceSize) &&
+            (_dicePosition!.dx > 0)) &&
+        (_dicePosition!.dy < (MediaQuery.of(context).size.height - _diceSize) &&
+            (_dicePosition!.dy > 0)) &&
+        (_yImpact || _xImpact)) {
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+  bool detectVerticalImpact(BuildContext context) {
+    if ((_dicePosition!.dy >=
+                (MediaQuery.of(context).size.height - _diceSize * 2) ||
+            _dicePosition!.dy <= 0) &&
+        !_yImpact &&
+        !untouchable!) {
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+  bool detectHorizontalImpact(BuildContext context) {
+    if ((_dicePosition!.dx >= (MediaQuery.of(context).size.width - _diceSize) ||
+            _dicePosition!.dx <= 0) &&
+        !_xImpact) {
+      return true;
+    } else {
+      return false;
+    }
   }
 }
